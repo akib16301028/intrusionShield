@@ -3,6 +3,7 @@ import streamlit as st
 from datetime import datetime
 import requests  # For sending Telegram notifications
 import os  # For file path operations
+from io import BytesIO
 
 # Function to extract the first part of the SiteName before the first underscore
 def extract_site(site_name):
@@ -198,12 +199,7 @@ if os.path.exists(user_file_path):
 else:
     st.sidebar.error("USER NAME.xlsx file not found in the repository.")
 
-#Download Option
-
-from io import BytesIO
-from datetime import datetime
-
-# Function to convert dataframes into an Excel file with multiple sheets
+# Download Option
 @st.cache_data
 def convert_df_to_excel_with_sheets(unmatched_df, rms_df, current_alarms_df, site_access_df):
     # Filter unmatched data to show only the required columns
@@ -268,7 +264,6 @@ if site_access_file and rms_file and current_alarms_file:
 else:
     st.sidebar.write("Please upload all required files to enable data download.")
 
-
 # Telegram Notification Option
 if st.sidebar.button("💬 Send Notification"):
     # Ensure user has updated zone names before sending notifications
@@ -288,10 +283,9 @@ if st.sidebar.button("💬 Send Notification"):
             for zone in zones:
                 zone_df = filtered_mismatches_df[filtered_mismatches_df['Zone'] == zone]
 
-                # Sort by 'End Time', putting 'Not Closed' at the top
-                zone_df['End Time'] = zone_df['End Time'].replace("Not Closed", None)
+                # Replace NaT with "Not Closed" and ensure proper sorting
+                zone_df['End Time'] = zone_df['End Time'].fillna("Not Closed")
                 sorted_zone_df = zone_df.sort_values(by='End Time', na_position='first')
-                sorted_zone_df['End Time'] = sorted_zone_df['End Time'].fillna("Not Closed")
 
                 message = f"❗Door Open Notification❗\n\n🚩 {zone}\n\n"
                 site_aliases = sorted_zone_df['Site Alias'].unique()

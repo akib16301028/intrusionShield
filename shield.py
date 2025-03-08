@@ -14,7 +14,7 @@ def merge_rms_alarms(rms_df, alarms_df):
     alarms_df['Start Time'] = alarms_df['Alarm Time']
     alarms_df['End Time'] = pd.NaT  # No End Time in Current Alarms, set to NaT
 
-    rms_columns = ['Site', 'Site Alias', 'Zone', 'Cluster', 'Start Time', 'End Time']
+    rms_columns = ['Site', 'Site Alias ', 'Zone', 'Cluster', 'Start Time', 'End Time']
     alarms_columns = ['Site', 'Site Alias', 'Zone', 'Cluster', 'Start Time', 'End Time']
 
     merged_df = pd.concat([rms_df[rms_columns], alarms_df[alarms_columns]], ignore_index=True)

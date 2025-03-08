@@ -26,6 +26,18 @@ def find_mismatches(site_access_df, merged_df):
     merged_comparison_df = pd.merge(merged_df, site_access_df, left_on='Site', right_on='SiteName_Extracted', how='left', indicator=True)
     mismatches_df = merged_comparison_df[merged_comparison_df['_merge'] == 'left_only']
     mismatches_df['End Time'] = mismatches_df['End Time'].fillna('Not Closed')  # Replace NaT with Not Closed
+
+    # Map Site to Site Alias from Site Access data
+    mismatches_df = pd.merge(
+        mismatches_df,
+        site_access_df[['SiteName_Extracted', 'SiteName']],
+        left_on='Site',
+        right_on='SiteName_Extracted',
+        how='left'
+    )
+    mismatches_df['Site Alias'] = mismatches_df['SiteName']  # Use SiteName as Site Alias
+    mismatches_df = mismatches_df.drop(columns=['SiteName_Extracted_y', 'SiteName'])  # Clean up extra columns
+
     return mismatches_df
 
 # Function to find matched sites and their status

@@ -7,69 +7,25 @@ from io import BytesIO
 
 # Function to extract the first part of the SiteName before the first underscore
 def extract_site(site_name):
-    if pd.notnull(site_name):
-        parts = site_name.split('_')
-        return parts[0] if len(parts) > 1 else site_name
-    return site_name
+    return site_name.split('_')[0] if pd.notnull(site_name) and '_' in site_name else site_name
 
 # Function to merge RMS and Current Alarms data
 def merge_rms_alarms(rms_df, alarms_df):
-    # Debug: Print columns in RMS and Alarms DataFrames
-    st.write("Columns in RMS DataFrame:", rms_df.columns.tolist())
-    st.write("Columns in Alarms DataFrame:", alarms_df.columns.tolist())
-
-    # Ensure required columns exist
-    required_columns = ['Site', 'Site Alias', 'Zone', 'Cluster', 'Alarm Time']
-    for col in required_columns:
-        if col not in alarms_df.columns:
-            st.error(f"Column '{col}' not found in Alarms DataFrame.")
-            return pd.DataFrame()  # Return empty DataFrame if columns are missing
-
-    # Prepare Alarms DataFrame
     alarms_df['Start Time'] = alarms_df['Alarm Time']
     alarms_df['End Time'] = pd.NaT  # No End Time in Current Alarms, set to NaT
 
-    # Prepare RMS DataFrame
     rms_columns = ['Site', 'Site Alias', 'Zone', 'Cluster', 'Start Time', 'End Time']
     alarms_columns = ['Site', 'Site Alias', 'Zone', 'Cluster', 'Start Time', 'End Time']
 
-    # Ensure columns exist in RMS DataFrame
-    for col in rms_columns:
-        if col not in rms_df.columns:
-            st.error(f"Column '{col}' not found in RMS DataFrame.")
-            return pd.DataFrame()  # Return empty DataFrame if columns are missing
-
-    # Merge DataFrames
     merged_df = pd.concat([rms_df[rms_columns], alarms_df[alarms_columns]], ignore_index=True)
-    st.write("Merged DataFrame:")
-    st.write(merged_df.head())
     return merged_df
 
 # Function to find mismatches between Site Access and merged RMS/Alarms dataset
 def find_mismatches(site_access_df, merged_df):
-    # Debug: Print columns in Site Access DataFrame
-    st.write("Columns in Site Access DataFrame:", site_access_df.columns.tolist())
-
-    # Ensure required columns exist
-    if 'SiteName' not in site_access_df.columns:
-        st.error("Column 'SiteName' not found in Site Access DataFrame.")
-        return pd.DataFrame()  # Return empty DataFrame if columns are missing
-
-    # Extract site names
     site_access_df['SiteName_Extracted'] = site_access_df['SiteName'].apply(extract_site)
-    st.write("Site Access DataFrame with Extracted Site Names:")
-    st.write(site_access_df.head())
-
-    # Merge with merged RMS/Alarms DataFrame
     merged_comparison_df = pd.merge(merged_df, site_access_df, left_on='Site', right_on='SiteName_Extracted', how='left', indicator=True)
-    st.write("Merged Comparison DataFrame:")
-    st.write(merged_comparison_df.head())
-
-    # Find mismatches
     mismatches_df = merged_comparison_df[merged_comparison_df['_merge'] == 'left_only']
     mismatches_df['End Time'] = mismatches_df['End Time'].fillna('Not Closed')  # Replace NaT with Not Closed
-    st.write("Mismatched Sites DataFrame:")
-    st.write(mismatches_df)
     return mismatches_df
 
 # Function to find matched sites and their status
@@ -146,58 +102,105 @@ if site_access_file and rms_file and current_alarms_file:
     rms_df = pd.read_excel(rms_file, header=2)
     current_alarms_df = pd.read_excel(current_alarms_file, header=2)
 
-    # Debug: Display first few rows of each DataFrame
-    st.write("### Debugging: First Few Rows of Each File")
-    st.write("Site Access Data:")
-    st.write(site_access_df.head())
-    st.write("RMS Data (All Door Open Alarms till now):")
-    st.write(rms_df.head())
-    st.write("Current Alarms Data:")
-    st.write(current_alarms_df.head())
-
     # Merge RMS and Current Alarms DataFrames
     merged_rms_alarms_df = merge_rms_alarms(rms_df, current_alarms_df)
 
-    # Find mismatches
-    if not merged_rms_alarms_df.empty:
-        mismatches_df = find_mismatches(site_access_df, merged_rms_alarms_df)
-        if not mismatches_df.empty:
-            st.write("### Mismatched Sites Found")
-            display_grouped_data(mismatches_df, "Mismatched Sites Grouped by Cluster and Zone")
-        else:
-            st.write("No mismatched sites found.")
-    else:
-        st.error("Merged DataFrame is empty. Check the input files and column names.")
+    # Filter inputs (date and time)
+    selected_date = st.date_input("Select Date", value=st.session_state.filter_date)
+    selected_time = st.time_input("Select Time", value=st.session_state.filter_time)
 
-    # Find matched sites
+    # Button to clear filters
+    if st.button("Clear Filters"):
+        st.session_state.filter_date = datetime.now().date()
+        st.session_state.filter_time = datetime.now().time()
+        st.session_state.status_filter = "All"
+
+    # Update session state only when the user changes time or date
+    if selected_date != st.session_state.filter_date:
+        st.session_state.filter_date = selected_date
+    if selected_time != st.session_state.filter_time:
+        st.session_state.filter_time = selected_time
+
+    # Combine selected date and time into a datetime object
+    filter_datetime = datetime.combine(st.session_state.filter_date, st.session_state.filter_time)
+
+    # Process mismatches
+    mismatches_df = find_mismatches(site_access_df, merged_rms_alarms_df)
+    mismatches_df['Start Time'] = pd.to_datetime(mismatches_df['Start Time'], errors='coerce')
+    filtered_mismatches_df = mismatches_df[mismatches_df['Start Time'] > filter_datetime]
+
+    # Process matches
     matched_df = find_matched_sites(site_access_df, merged_rms_alarms_df)
-    if not matched_df.empty:
-        st.write("### Matched Sites with Status")
-        display_matched_sites(matched_df)
+
+    # Apply filtering conditions
+    status_filter_condition = matched_df['Status'] == st.session_state.status_filter if st.session_state.status_filter != "All" else True
+    time_filter_condition = (matched_df['Start Time'] > filter_datetime) | (matched_df['End Time'] > filter_datetime)
+
+    # Apply filters to matched data
+    filtered_matched_df = matched_df[status_filter_condition & time_filter_condition]
+
+    # Add the status filter dropdown right before the matched sites table
+    status_filter = st.selectbox("SA-Request Valid/Expired", options=["All", "Valid", "Expired"], index=0)
+
+    # Update session state for status filter
+    if status_filter != st.session_state.status_filter:
+        st.session_state.status_filter = status_filter
+
+    # Display mismatches
+    if not filtered_mismatches_df.empty:
+        st.write(f"Mismatched Sites (After {filter_datetime}) grouped by Cluster and Zone:")
+        display_grouped_data(filtered_mismatches_df, "Filtered Mismatched Sites")
     else:
-        st.write("No matched sites found.")
+        st.write(f"No mismatches found after {filter_datetime}. Showing all mismatched sites.")
+        display_grouped_data(mismatches_df, "All Mismatched Sites")
+
+    # Display matched sites
+    display_matched_sites(filtered_matched_df)
 
 # Sidebar options
 st.sidebar.title("Options")
-st.sidebar.write("### Update Zone Concern")
+
+# Update Zone Concern Option
+st.sidebar.markdown("### Update Zone Concern")
 user_file_path = os.path.join(os.path.dirname(__file__), "USER NAME.xlsx")
 
 if os.path.exists(user_file_path):
     user_df = pd.read_excel(user_file_path)
+
     if "Zone" in user_df.columns and "Name" in user_df.columns:
         zone_list = user_df['Zone'].unique()
         selected_zone = st.sidebar.selectbox("Select Zone", options=zone_list)
-        current_name = user_df.loc[user_df['Zone'] == selected_zone, 'Name'].values[0]
-        new_name = st.sidebar.text_input("Update Name", value=current_name)
 
-        if st.sidebar.button("🔄Update Concern"):
-            user_df.loc[user_df['Zone'] == selected_zone, 'Name'] = new_name
-            user_df.to_excel(user_file_path, index=False)
-            st.sidebar.success("Zone concern updated successfully!")
+        if selected_zone:
+            current_name = user_df.loc[user_df['Zone'] == selected_zone, 'Name'].values[0]
+            new_name = st.sidebar.text_input("Update Name", value=current_name)
+
+            if st.sidebar.button("🔄Update Concern"):
+                success, message = update_zone_user(selected_zone, new_name, user_file_path)
+                if success:
+                    st.sidebar.success(message)
+                else:
+                    st.sidebar.error(message)
     else:
         st.sidebar.error("The USER NAME.xlsx file must have 'Zone' and 'Name' columns.")
 else:
     st.sidebar.error("USER NAME.xlsx file not found in the repository.")
+
+# Download Option
+if site_access_file and rms_file and current_alarms_file:
+    timestamp = datetime.now().strftime("%d%m%y%H%M%S")
+    file_name = f"UnauthorizedAccess_{timestamp}.xlsx"
+    excel_data = BytesIO()
+    with pd.ExcelWriter(excel_data, engine='xlsxwriter') as writer:
+        mismatches_df.to_excel(writer, sheet_name='Mismatched Sites', index=False)
+        matched_df.to_excel(writer, sheet_name='Matched Sites', index=False)
+    excel_data.seek(0)
+    st.sidebar.download_button(
+        label="📂 Download Data",
+        data=excel_data,
+        file_name=file_name,
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
 
 # Telegram Notification Option
 if st.sidebar.button("💬 Send Notification"):
@@ -215,19 +218,3 @@ if st.sidebar.button("💬 Send Notification"):
             st.sidebar.error("Failed to send notification.")
     else:
         st.sidebar.write("No mismatched sites to notify.")
-
-# Download Option
-if site_access_file and rms_file and current_alarms_file:
-    timestamp = datetime.now().strftime("%d%m%y%H%M%S")
-    file_name = f"UnauthorizedAccess_{timestamp}.xlsx"
-    excel_data = BytesIO()
-    with pd.ExcelWriter(excel_data, engine='xlsxwriter') as writer:
-        mismatches_df.to_excel(writer, sheet_name='Mismatched Sites', index=False)
-        matched_df.to_excel(writer, sheet_name='Matched Sites', index=False)
-    excel_data.seek(0)
-    st.sidebar.download_button(
-        label="📂 Download Data",
-        data=excel_data,
-        file_name=file_name,
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )

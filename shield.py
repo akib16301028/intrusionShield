@@ -5,6 +5,14 @@ import requests  # For sending Telegram notifications
 import os  # For file path operations
 from io import BytesIO
 
+# Function to strip leading/trailing spaces from column names
+def clean_column_names(df):
+    """
+    Strip leading and trailing spaces from column names in a DataFrame.
+    """
+    df.columns = df.columns.str.strip()  # Remove leading/trailing spaces
+    return df
+
 # Function to extract the first part of the SiteName before the first underscore
 def extract_site(site_name):
     return site_name.split('_')[0] if pd.notnull(site_name) and '_' in site_name else site_name
@@ -14,7 +22,7 @@ def merge_rms_alarms(rms_df, alarms_df):
     alarms_df['Start Time'] = alarms_df['Alarm Time']
     alarms_df['End Time'] = pd.NaT  # No End Time in Current Alarms, set to NaT
 
-    rms_columns = ['Site', 'Site Alias ', 'Zone', 'Cluster', 'Start Time', 'End Time']
+    rms_columns = ['Site', 'Site Alias', 'Zone', 'Cluster', 'Start Time', 'End Time']
     alarms_columns = ['Site', 'Site Alias', 'Zone', 'Cluster', 'Start Time', 'End Time']
 
     merged_df = pd.concat([rms_df[rms_columns], alarms_df[alarms_columns]], ignore_index=True)
@@ -106,9 +114,17 @@ if "status_filter" not in st.session_state:
     st.session_state.status_filter = "All"
 
 if site_access_file and rms_file and current_alarms_file:
+    # Load and clean Site Access Data
     site_access_df = pd.read_excel(site_access_file)
+    site_access_df = clean_column_names(site_access_df)
+
+    # Load and clean RMS Data
     rms_df = pd.read_excel(rms_file, header=2)
+    rms_df = clean_column_names(rms_df)
+
+    # Load and clean Current Alarms Data
     current_alarms_df = pd.read_excel(current_alarms_file, header=2)
+    current_alarms_df = clean_column_names(current_alarms_df)
 
     merged_rms_alarms_df = merge_rms_alarms(rms_df, current_alarms_df)
 

@@ -30,7 +30,7 @@ def merge_rms_alarms(rms_df, alarms_df):
     alarms_df['End Time'] = pd.NaT  # No End Time in Current Alarms, set to NaT
 
     # Prepare RMS DataFrame
-    rms_columns = ['Site', 'Site Alias', 'Zone', 'Cluster', 'Start Time', 'End Time']
+    rms_columns = ['Site', 'Site Alias ', 'Zone', 'Cluster', 'Start Time', 'End Time']
     alarms_columns = ['Site', 'Site Alias', 'Zone', 'Cluster', 'Start Time', 'End Time']
 
     # Ensure columns exist in RMS DataFrame

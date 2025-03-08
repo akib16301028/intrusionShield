@@ -3,15 +3,6 @@ import streamlit as st
 from datetime import datetime
 import requests  # For sending Telegram notifications
 import os  # For file path operations
-from io import BytesIO
-
-# Function to strip leading/trailing spaces from column names
-def clean_column_names(df):
-    """
-    Strip leading and trailing spaces from column names in a DataFrame.
-    """
-    df.columns = df.columns.str.strip()  # Remove leading/trailing spaces
-    return df
 
 # Function to extract the first part of the SiteName before the first underscore
 def extract_site(site_name):
@@ -22,7 +13,7 @@ def merge_rms_alarms(rms_df, alarms_df):
     alarms_df['Start Time'] = alarms_df['Alarm Time']
     alarms_df['End Time'] = pd.NaT  # No End Time in Current Alarms, set to NaT
 
-    rms_columns = ['Site', 'Site Alias', 'Zone', 'Cluster', 'Start Time', 'End Time']
+    rms_columns = ['Site', 'Site Alias ', 'Zone', 'Cluster', 'Start Time', 'End Time']
     alarms_columns = ['Site', 'Site Alias', 'Zone', 'Cluster', 'Start Time', 'End Time']
 
     merged_df = pd.concat([rms_df[rms_columns], alarms_df[alarms_columns]], ignore_index=True)
@@ -34,18 +25,6 @@ def find_mismatches(site_access_df, merged_df):
     merged_comparison_df = pd.merge(merged_df, site_access_df, left_on='Site', right_on='SiteName_Extracted', how='left', indicator=True)
     mismatches_df = merged_comparison_df[merged_comparison_df['_merge'] == 'left_only']
     mismatches_df['End Time'] = mismatches_df['End Time'].fillna('Not Closed')  # Replace NaT with Not Closed
-
-    # Map Site to Site Alias from Site Access data
-    mismatches_df = pd.merge(
-        mismatches_df,
-        site_access_df[['SiteName_Extracted', 'SiteName']],
-        left_on='Site',
-        right_on='SiteName_Extracted',
-        how='left'
-    )
-    mismatches_df['Site Alias'] = mismatches_df['SiteName']  # Use SiteName as Site Alias
-    mismatches_df = mismatches_df.drop(columns=['SiteName_Extracted_y', 'SiteName'])  # Clean up extra columns
-
     return mismatches_df
 
 # Function to find matched sites and their status
@@ -114,17 +93,9 @@ if "status_filter" not in st.session_state:
     st.session_state.status_filter = "All"
 
 if site_access_file and rms_file and current_alarms_file:
-    # Load and clean Site Access Data
     site_access_df = pd.read_excel(site_access_file)
-    site_access_df = clean_column_names(site_access_df)
-
-    # Load and clean RMS Data
     rms_df = pd.read_excel(rms_file, header=2)
-    rms_df = clean_column_names(rms_df)
-
-    # Load and clean Current Alarms Data
     current_alarms_df = pd.read_excel(current_alarms_file, header=2)
-    current_alarms_df = clean_column_names(current_alarms_df)
 
     merged_rms_alarms_df = merge_rms_alarms(rms_df, current_alarms_df)
 
@@ -227,7 +198,12 @@ if os.path.exists(user_file_path):
 else:
     st.sidebar.error("USER NAME.xlsx file not found in the repository.")
 
-# Download Option
+#Download Option
+
+from io import BytesIO
+from datetime import datetime
+
+# Function to convert dataframes into an Excel file with multiple sheets
 @st.cache_data
 def convert_df_to_excel_with_sheets(unmatched_df, rms_df, current_alarms_df, site_access_df):
     # Filter unmatched data to show only the required columns
@@ -292,6 +268,7 @@ if site_access_file and rms_file and current_alarms_file:
 else:
     st.sidebar.write("Please upload all required files to enable data download.")
 
+
 # Telegram Notification Option
 if st.sidebar.button("💬 Send Notification"):
     # Ensure user has updated zone names before sending notifications
@@ -304,36 +281,22 @@ if st.sidebar.button("💬 Send Notification"):
             zone_to_name = user_df.set_index("Zone")["Name"].to_dict()
 
             # Iterate over zones in mismatched data and send notifications
-            zones = mismatches_df['Zone'].unique()  # Use the full mismatches DataFrame
+            zones = filtered_mismatches_df['Zone'].unique()
             bot_token = "7543963915:AAGWMNVfD6BaCLuSyKAPCJgPGrdN5WyGLbo"
             chat_id = "-4625672098"
 
             for zone in zones:
-                zone_df = mismatches_df[mismatches_df['Zone'] == zone]
+                zone_df = filtered_mismatches_df[filtered_mismatches_df['Zone'] == zone]
 
-                # Replace NaT with "Not Closed" and ensure proper sorting
-                zone_df['End Time'] = zone_df['End Time'].fillna("Not Closed")
-
-                # Convert "Not Closed" to a future datetime for sorting purposes
-                max_datetime = pd.Timestamp.max  # Use the maximum possible datetime value
-                zone_df['Sort Key'] = zone_df['End Time'].apply(lambda x: max_datetime if x == "Not Closed" else pd.to_datetime(x))
-
-                # Sort by the new 'Sort Key' column
-                sorted_zone_df = zone_df.sort_values(by='Sort Key', na_position='first')
-
-                # Drop the temporary 'Sort Key' column
-                sorted_zone_df = sorted_zone_df.drop(columns=['Sort Key'])
-
-                # Debug: Verify the number of sites
-                st.write(f"Total mismatched sites for zone {zone}: {len(sorted_zone_df)}")
+                # Sort by 'End Time', putting 'Not Closed' at the top
+                zone_df['End Time'] = zone_df['End Time'].replace("Not Closed", None)
+                sorted_zone_df = zone_df.sort_values(by='End Time', na_position='first')
+                sorted_zone_df['End Time'] = sorted_zone_df['End Time'].fillna("Not Closed")
 
                 message = f"❗Door Open Notification❗\n\n🚩 {zone}\n\n"
                 site_aliases = sorted_zone_df['Site Alias'].unique()
 
                 for site_alias in site_aliases:
-                    if pd.isna(site_alias):  # Skip rows with missing site alias names
-                        continue
-
                     site_df = sorted_zone_df[sorted_zone_df['Site Alias'] == site_alias]
                     message += f"✔ {site_alias}\n"
                     for _, row in site_df.iterrows():

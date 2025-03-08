@@ -26,6 +26,9 @@ def find_mismatches(site_access_df, merged_df):
     merged_comparison_df = pd.merge(merged_df, site_access_df, left_on='Site', right_on='SiteName_Extracted', how='left', indicator=True)
     mismatches_df = merged_comparison_df[merged_comparison_df['_merge'] == 'left_only']
     mismatches_df['End Time'] = mismatches_df['End Time'].fillna('Not Closed')  # Replace NaT with Not Closed
+
+    # Exclude rows with both Start Time and End Time (irrelevant for notifications)
+    mismatches_df = mismatches_df[mismatches_df['End Time'] == 'Not Closed']
     return mismatches_df
 
 # Function to find matched sites and their status
@@ -303,6 +306,9 @@ if st.sidebar.button("💬 Send Notification"):
                 site_aliases = sorted_zone_df['Site Alias'].unique()
 
                 for site_alias in site_aliases:
+                    if site_alias == "Unknown":
+                        continue  # Skip rows with missing site alias names
+
                     site_df = sorted_zone_df[sorted_zone_df['Site Alias'] == site_alias]
                     message += f"✔ {site_alias}\n"
                     for _, row in site_df.iterrows():

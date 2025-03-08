@@ -276,16 +276,28 @@ if st.sidebar.button("💬 Send Notification"):
             zone_to_name = user_df.set_index("Zone")["Name"].to_dict()
 
             # Iterate over zones in mismatched data and send notifications
-            zones = filtered_mismatches_df['Zone'].unique()
+            zones = mismatches_df['Zone'].unique()  # Use the full mismatches DataFrame
             bot_token = "7543963915:AAGWMNVfD6BaCLuSyKAPCJgPGrdN5WyGLbo"
             chat_id = "-4625672098"
 
             for zone in zones:
-                zone_df = filtered_mismatches_df[filtered_mismatches_df['Zone'] == zone]
+                zone_df = mismatches_df[mismatches_df['Zone'] == zone]
 
                 # Replace NaT with "Not Closed" and ensure proper sorting
                 zone_df['End Time'] = zone_df['End Time'].fillna("Not Closed")
-                sorted_zone_df = zone_df.sort_values(by='End Time', na_position='first')
+
+                # Convert "Not Closed" to a future datetime for sorting purposes
+                max_datetime = pd.Timestamp.max  # Use the maximum possible datetime value
+                zone_df['Sort Key'] = zone_df['End Time'].apply(lambda x: max_datetime if x == "Not Closed" else pd.to_datetime(x))
+
+                # Sort by the new 'Sort Key' column
+                sorted_zone_df = zone_df.sort_values(by='Sort Key', na_position='first')
+
+                # Drop the temporary 'Sort Key' column
+                sorted_zone_df = sorted_zone_df.drop(columns=['Sort Key'])
+
+                # Debug: Verify the number of sites
+                st.write(f"Total mismatched sites for zone {zone}: {len(sorted_zone_df)}")
 
                 message = f"❗Door Open Notification❗\n\n🚩 {zone}\n\n"
                 site_aliases = sorted_zone_df['Site Alias'].unique()

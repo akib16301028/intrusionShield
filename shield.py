@@ -55,12 +55,20 @@ def display_grouped_data(grouped_df, title):
             # Remove NaN values and empty strings
             display_df['Site Alias'] = display_df['Site Alias'].fillna('Unknown').replace('', 'Unknown')
             
-            # Only show Site Alias when it changes
-            for i in range(1, len(display_df)):
-                if display_df.at[i, 'Site Alias'] == display_df.at[i-1, 'Site Alias']:
-                    display_df.at[i, 'Site Alias'] = ''
+            # Reset index to avoid index-related errors
+            display_df = display_df.reset_index(drop=True)
             
-            st.table(display_df.reset_index(drop=True))
+            # Only show Site Alias when it changes - safer implementation
+            if not display_df.empty:
+                prev_alias = None
+                for i in range(len(display_df)):
+                    current_alias = display_df.at[i, 'Site Alias']
+                    if current_alias == prev_alias:
+                        display_df.at[i, 'Site Alias'] = ''
+                    else:
+                        prev_alias = current_alias
+            
+            st.table(display_df)
         st.markdown("---")
 
 def send_telegram_notification(mismatches_df, user_file_path):

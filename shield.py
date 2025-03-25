@@ -51,9 +51,13 @@ def display_grouped_data(grouped_df, title):
         for zone in zones:
             st.markdown(f"***<span style='font-size:14px;'>{zone}</span>***", unsafe_allow_html=True)
             zone_df = cluster_df[cluster_df['Zone'] == zone]
+            
+            # Create display DataFrame with all columns
             display_df = zone_df[['Site Alias', 'Start Time', 'End Time']].copy()
-            display_df['Site Alias'] = display_df['Site Alias'].where(display_df['Site Alias'] != display_df['Site Alias'].shift())
-            display_df = display_df.fillna('')
+            
+            # Only show Site Alias when it changes from the previous row
+            display_df['Site Alias'] = display_df['Site Alias'].mask(display_df['Site Alias'].duplicated(), '')
+            
             st.table(display_df)
         st.markdown("---")
 

@@ -55,8 +55,17 @@ def display_grouped_data(grouped_df, title):
             # Create display DataFrame with all columns
             display_df = zone_df[['Site Alias', 'Start Time', 'End Time']].copy()
             
+            # Ensure we're using the correct column name (some files use 'Site Alias ' with space)
+            if 'Site Alias ' in zone_df.columns:
+                display_df['Site Alias'] = zone_df['Site Alias ']
+            
+            # Reset index for clean display
+            display_df = display_df.reset_index(drop=True)
+            
             # Only show Site Alias when it changes from the previous row
-            display_df['Site Alias'] = display_df['Site Alias'].mask(display_df['Site Alias'].duplicated(), '')
+            for i in range(1, len(display_df)):
+                if display_df.at[i, 'Site Alias'] == display_df.at[i-1, 'Site Alias']:
+                    display_df.at[i, 'Site Alias'] = ''
             
             st.table(display_df)
         st.markdown("---")

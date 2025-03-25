@@ -56,19 +56,19 @@ def display_grouped_data(grouped_df, title):
             display_df = zone_df[[alias_col, 'Start Time', 'End Time']].copy()
             display_df.columns = ['Site Alias', 'Start Time', 'End Time']
             
+            # Reset index to avoid index-related errors
+            display_df = display_df.reset_index(drop=True)
+            
             # Fill NA values and ensure proper display
             display_df['Site Alias'] = display_df['Site Alias'].fillna('Unknown')
             
-            # Only show Site Alias when it changes
-            prev_alias = None
-            for i in range(len(display_df)):
-                current_alias = display_df.at[i, 'Site Alias']
-                if current_alias == prev_alias:
-                    display_df.at[i, 'Site Alias'] = ''
-                else:
-                    prev_alias = current_alias
+            # Only show Site Alias when it changes - using shift() which is more reliable
+            display_df['Site Alias'] = display_df['Site Alias'].where(
+                display_df['Site Alias'] != display_df['Site Alias'].shift(), 
+                ''
+            )
             
-            st.table(display_df.reset_index(drop=True))
+            st.table(display_df)
         st.markdown("---")
 
 # Function to display matched sites with status

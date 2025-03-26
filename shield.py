@@ -284,53 +284,47 @@ else:
 
 # Telegram Notification Option
 if st.sidebar.button("💬 Send Notification"):
-    # Ensure user has updated zone names before sending notifications
     if os.path.exists(user_file_path):
         user_df = pd.read_excel(user_file_path)
-
-        # Ensure proper column names
+        
         if "Zone" in user_df.columns and "Name" in user_df.columns:
-            # Create a mapping of Zone to Name
-            zone_to_name = user_df.set_index("Zone")["Name"].to_dict()
-
-            # Iterate over zones in mismatched data and send notifications
+            # Use filtered data if available, otherwise all mismatches
             notification_df = filtered_mismatches_df if not filtered_mismatches_df.empty else mismatches_df
-            zones = notification_df['Zone'].unique()
+            
+            # Get zone to name mapping
+            zone_to_name = user_df.set_index("Zone")["Name"].to_dict()
+            
+            # Telegram credentials
             bot_token = "7543963915:AAGWMNVfD6BaCLuSyKAPCJgPGrdN5WyGLbo"
             chat_id = "-4625672098"
-
-            for zone in zones:
-                zone_df = notification_df[notification_df['Zone'] == zone]
-
-                # Sort by 'End Time', putting 'Not Closed' at the top
-                zone_df['End Time'] = zone_df['End Time'].replace("Not Closed", None)
-                sorted_zone_df = zone_df.sort_values(by='End Time', na_position='first')
-                sorted_zone_df['End Time'] = sorted_zone_df['End Time'].fillna("Not Closed")
-
+            
+            # Process each zone
+            for zone in notification_df['Zone'].unique():
+                zone_data = notification_df[notification_df['Zone'] == zone]
+                
+                # Start building message
                 message = f"❗Door Open Notification❗\n\n🚩 {zone}\n\n"
                 
-                # Handle both 'Site Alias' and 'Site Alias ' columns
-                site_alias_col = 'Site Alias' if 'Site Alias' in sorted_zone_df.columns else 'Site Alias '
-                site_aliases = sorted_zone_df[site_alias_col].unique()
-
-                for site_alias in site_aliases:
-                    if pd.isna(site_alias):
-                        site_alias = "Unknown Site"
-                    site_df = sorted_zone_df[sorted_zone_df[site_alias_col] == site_alias]
-                    message += f"✔ {site_alias}\n"
-                    for _, row in site_df.iterrows():
-                        end_time_display = row['End Time']
-                        start_time_display = row['Start Time'].strftime('%Y-%m-%d %H:%M:%S') if pd.notnull(row['Start Time']) else "Unknown time"
-                        message += f"  • Start Time: {start_time_display} | End Time: {end_time_display}\n"
+                # Group by Site Alias (handle both column name variations)
+                site_alias_col = 'Site Alias' if 'Site Alias' in zone_data.columns else 'Site Alias '
+                
+                for site, group in zone_data.groupby(site_alias_col):
+                    site = site if pd.notna(site) else "Unknown Site"
+                    message += f"✔ {site}\n"
+                    
+                    for _, row in group.iterrows():
+                        start_time = row['Start Time'].strftime('%Y-%m-%d %H:%M:%S') if pd.notna(row['Start Time']) else "Unknown time"
+                        end_time = "Still Open" if row['End Time'] == "Not Closed" or pd.isna(row['End Time']) else row['End Time'].strftime('%Y-%m-%d %H:%M:%S')
+                        message += f"  • Start Time: {start_time} | End Time: {end_time}\n"
+                    
                     message += "\n"
-
-                # Append mention of the responsible person for the zone
+                
+                # Add responsible person
                 if zone in zone_to_name:
-                    # Escape underscores in the name
-                    escaped_name = str(zone_to_name[zone]).replace("_", "\\_")
-                    message += f"**@{escaped_name}**, no Site Access Request found for these Door Open alarms. Please take care and share us update.\n"
-
-                # Send the plain-text message
+                    name = str(zone_to_name[zone]).replace("_", "\\_")
+                    message += f"**@{name}**, please check these door open alarms.\n"
+                
+                # Send message
                 try:
                     response = requests.post(
                         f"https://api.telegram.org/bot{bot_token}/sendMessage",
@@ -342,12 +336,12 @@ if st.sidebar.button("💬 Send Notification"):
                         timeout=10
                     )
                     if response.status_code == 200:
-                        st.success(f"Notification for zone '{zone}' sent successfully!")
+                        st.success(f"Notification sent for {zone}!")
                     else:
-                        st.error(f"Failed to send notification for zone '{zone}'. Status: {response.status_code}")
+                        st.error(f"Failed to send for {zone}. Status: {response.status_code}")
                 except Exception as e:
-                    st.error(f"Error sending notification for zone '{zone}': {str(e)}")
+                    st.error(f"Error sending for {zone}: {str(e)}")
         else:
-            st.error("The USER NAME.xlsx file must have 'Zone' and 'Name' columns.")
+            st.error("USER NAME.xlsx must have 'Zone' and 'Name' columns")
     else:
-        st.error("USER NAME.xlsx file not found in the repository.")
+        st.error("USER NAME.xlsx file not found")

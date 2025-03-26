@@ -292,50 +292,65 @@ if st.sidebar.button("💬 Send Notification"):
         if "Zone" in user_df.columns and "Name" in user_df.columns:
             # Create a mapping of Zone to Name
             zone_to_name = user_df.set_index("Zone")["Name"].to_dict()
-
-            # Iterate over zones in mismatched data and send notifications
-            zones = filtered_mismatches_df['Zone'].unique()
             bot_token = "7543963915:AAGWMNVfD6BaCLuSyKAPCJgPGrdN5WyGLbo"
             chat_id = "-4625672098"
 
+            # Get the DataFrame to use (filtered if available, otherwise all)
+            notification_df = filtered_mismatches_df if not filtered_mismatches_df.empty else mismatches_df
+            
+            # Group by Zone
+            zones = notification_df['Zone'].unique()
+
             for zone in zones:
-                zone_df = filtered_mismatches_df[filtered_mismatches_df['Zone'] == zone]
+                zone_df = notification_df[notification_df['Zone'] == zone]
+                
+                # Clean and prepare the data
+                zone_df = zone_df.copy()
+                zone_df['Site Alias'] = zone_df['Site Alias'].fillna('Unknown Site')  # Handle both 'Site Alias' and 'Site Alias '
+                if 'Site Alias ' in zone_df.columns:
+                    zone_df['Site Alias'] = zone_df['Site Alias '].fillna('Unknown Site')
+                
+                # Format timestamps
+                zone_df['Start Time'] = zone_df['Start Time'].apply(
+                    lambda x: x.strftime('%Y-%m-%d %H:%M:%S') if pd.notnull(x) else 'Unknown time'
+                )
+                zone_df['End Time'] = zone_df['End Time'].apply(
+                    lambda x: x.strftime('%Y-%m-%d %H:%M:%S') if pd.notnull(x) and x != 'Not Closed' else 'Still Open'
+                )
 
-                # Sort by 'End Time', putting 'Not Closed' at the top
-                zone_df['End Time'] = zone_df['End Time'].replace("Not Closed", None)
-                sorted_zone_df = zone_df.sort_values(by='End Time', na_position='first')
-                sorted_zone_df['End Time'] = sorted_zone_df['End Time'].fillna("Not Closed")
-
+                # Build the message
                 message = f"❗Door Open Notification❗\n\n🚩 {zone}\n\n"
-                site_aliases = sorted_zone_df['Site Alias'].unique()
-
-                for site_alias in site_aliases:
-                    site_df = sorted_zone_df[sorted_zone_df['Site Alias'] == site_alias]
+                
+                # Group by Site Alias to avoid duplicates
+                for site_alias, group in zone_df.groupby('Site Alias'):
                     message += f"✔ {site_alias}\n"
-                    for _, row in site_df.iterrows():
-                        end_time_display = row['End Time']
-                        message += f"  • Start Time: {row['Start Time']} | End Time: {end_time_display}\n"
+                    for _, row in group.iterrows():
+                        message += f"  • Start Time: {row['Start Time']} | End Time: {row['End Time']}\n"
                     message += "\n"
 
-                # Append mention of the responsible person for the zone
+                # Add responsible person mention
                 if zone in zone_to_name:
-                    # Escape underscores in the name
-                    escaped_name = zone_to_name[zone].replace("_", "\\_")
-                    message += f"**@{escaped_name}**, no Site Access Request found for these Door Open alarms. Please take care and share us update.\n"
+                    name = str(zone_to_name[zone])
+                    # Escape special Markdown characters
+                    escaped_name = name.replace("_", "\\_").replace("*", "\\*").replace("[", "\\[")
+                    message += f"**@{escaped_name}**, no Site Access Request found for these Door Open alarms. Please take care and share update.\n"
 
-                # Send the plain-text message
-                payload = {
-                    "chat_id": chat_id,
-                    "text": message,
-                    "parse_mode": "Markdown"
-                }
-                url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
-                response = requests.post(url, json=payload)
-
-                if response.status_code == 200:
-                    st.success(f"Notification for zone '{zone}' sent successfully!")
-                else:
-                    st.error(f"Failed to send notification for zone '{zone}'.")
+                # Send the message
+                try:
+                    response = requests.post(
+                        "https://api.telegram.org/bot{bot_token}/sendMessage",
+                        json={
+                            "chat_id": chat_id,
+                            "text": message,
+                            "parse_mode": "Markdown"
+                        }
+                    )
+                    if response.status_code == 200:
+                        st.success(f"Notification for zone '{zone}' sent successfully!")
+                    else:
+                        st.error(f"Failed to send notification for zone '{zone}'. Status code: {response.status_code}")
+                except Exception as e:
+                    st.error(f"Error sending notification for zone '{zone}': {str(e)}")
         else:
             st.error("The USER NAME.xlsx file must have 'Zone' and 'Name' columns.")
     else:

@@ -62,9 +62,9 @@ def display_grouped_data(grouped_df, title):
             # Reset index for clean display
             display_df = display_df.reset_index(drop=True)
             
-            # Only show Site Alias when it changes from the previous row
+            # Only show Site Alias when it changes from the previous row OR when End Time is "Not Closed"
             for i in range(1, len(display_df)):
-                if display_df.at[i, 'Site Alias'] == display_df.at[i-1, 'Site Alias']:
+                if display_df.at[i, 'Site Alias'] == display_df.at[i-1, 'Site Alias'] and display_df.at[i, 'End Time'] != "Not Closed":
                     display_df.at[i, 'Site Alias'] = ''
             
             st.table(display_df)

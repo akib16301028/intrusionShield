@@ -4,16 +4,25 @@ from datetime import datetime
 import requests  # For sending Telegram notifications
 import os  # For file path operations
 
+# Function to standardize column names by stripping whitespace
+def clean_column_names(df):
+    df.columns = df.columns.str.strip()
+    return df
+
 # Function to extract the first part of the SiteName before the first underscore
 def extract_site(site_name):
     return site_name.split('_')[0] if pd.notnull(site_name) and '_' in site_name else site_name
 
 # Function to merge RMS and Current Alarms data
 def merge_rms_alarms(rms_df, alarms_df):
+    # Clean column names
+    rms_df = clean_column_names(rms_df)
+    alarms_df = clean_column_names(alarms_df)
+    
     alarms_df['Start Time'] = alarms_df['Alarm Time']
     alarms_df['End Time'] = pd.NaT  # No End Time in Current Alarms, set to NaT
 
-    rms_columns = ['Site', 'Site Alias ', 'Zone', 'Cluster', 'Start Time', 'End Time']
+    rms_columns = ['Site', 'Site Alias', 'Zone', 'Cluster', 'Start Time', 'End Time']
     alarms_columns = ['Site', 'Site Alias', 'Zone', 'Cluster', 'Start Time', 'End Time']
 
     merged_df = pd.concat([rms_df[rms_columns], alarms_df[alarms_columns]], ignore_index=True)
@@ -21,6 +30,10 @@ def merge_rms_alarms(rms_df, alarms_df):
 
 # Function to find mismatches between Site Access and merged RMS/Alarms dataset
 def find_mismatches(site_access_df, merged_df):
+    # Clean column names
+    site_access_df = clean_column_names(site_access_df)
+    merged_df = clean_column_names(merged_df)
+    
     site_access_df['SiteName_Extracted'] = site_access_df['SiteName'].apply(extract_site)
     merged_comparison_df = pd.merge(merged_df, site_access_df, left_on='Site', right_on='SiteName_Extracted', how='left', indicator=True)
     mismatches_df = merged_comparison_df[merged_comparison_df['_merge'] == 'left_only']
@@ -29,6 +42,10 @@ def find_mismatches(site_access_df, merged_df):
 
 # Function to find matched sites and their status
 def find_matched_sites(site_access_df, merged_df):
+    # Clean column names
+    site_access_df = clean_column_names(site_access_df)
+    merged_df = clean_column_names(merged_df)
+    
     site_access_df['SiteName_Extracted'] = site_access_df['SiteName'].apply(extract_site)
     matched_df = pd.merge(site_access_df, merged_df, left_on='SiteName_Extracted', right_on='Site', how='inner')
     matched_df['StartDate'] = pd.to_datetime(matched_df['StartDate'], errors='coerce')
@@ -41,6 +58,10 @@ def find_matched_sites(site_access_df, merged_df):
 # Function to display grouped data by Cluster and Zone in a table
 def display_grouped_data(grouped_df, title):
     st.write(title)
+    
+    # Clean column names
+    grouped_df = clean_column_names(grouped_df)
+    
     clusters = grouped_df['Cluster'].unique()
 
     for cluster in clusters:
@@ -52,12 +73,8 @@ def display_grouped_data(grouped_df, title):
             st.markdown(f"***<span style='font-size:14px;'>{zone}</span>***", unsafe_allow_html=True)
             zone_df = cluster_df[cluster_df['Zone'] == zone]
             
-            # Create display DataFrame with all columns
+            # Create display DataFrame with cleaned column names
             display_df = zone_df[['Site Alias', 'Start Time', 'End Time']].copy()
-            
-            # Ensure we're using the correct column name (some files use 'Site Alias ' with space)
-            if 'Site Alias ' in zone_df.columns:
-                display_df['Site Alias'] = zone_df['Site Alias ']
             
             # Reset index for clean display
             display_df = display_df.reset_index(drop=True)
@@ -72,6 +89,9 @@ def display_grouped_data(grouped_df, title):
 
 # Function to display matched sites with status
 def display_matched_sites(matched_df):
+    # Clean column names
+    matched_df = clean_column_names(matched_df)
+    
     color_map = {'Valid': 'background-color: lightgreen;', 'Expired': 'background-color: lightcoral;'}
     def highlight_status(status):
         return color_map.get(status, '')
@@ -106,9 +126,10 @@ if "status_filter" not in st.session_state:
     st.session_state.status_filter = "All"
 
 if site_access_file and rms_file and current_alarms_file:
-    site_access_df = pd.read_excel(site_access_file)
-    rms_df = pd.read_excel(rms_file, header=2)
-    current_alarms_df = pd.read_excel(current_alarms_file, header=2)
+    # Clean column names when reading files
+    site_access_df = clean_column_names(pd.read_excel(site_access_file))
+    rms_df = clean_column_names(pd.read_excel(rms_file, header=2))
+    current_alarms_df = clean_column_names(pd.read_excel(current_alarms_file, header=2))
 
     merged_rms_alarms_df = merge_rms_alarms(rms_df, current_alarms_df)
 
@@ -168,6 +189,7 @@ if site_access_file and rms_file and current_alarms_file:
 def update_zone_user(zone, new_name, user_file_path):
     if os.path.exists(user_file_path):
         user_df = pd.read_excel(user_file_path)
+        user_df = clean_column_names(user_df)
 
         # Ensure proper column names
         if "Zone" in user_df.columns and "Name" in user_df.columns:
@@ -191,6 +213,7 @@ user_file_path = os.path.join(os.path.dirname(__file__), "USER NAME.xlsx")
 
 if os.path.exists(user_file_path):
     user_df = pd.read_excel(user_file_path)
+    user_df = clean_column_names(user_df)
 
     if "Zone" in user_df.columns and "Name" in user_df.columns:
         zone_list = user_df['Zone'].unique()
@@ -211,14 +234,19 @@ if os.path.exists(user_file_path):
 else:
     st.sidebar.error("USER NAME.xlsx file not found in the repository.")
 
-#Download Option
-
+# Download Option
 from io import BytesIO
 from datetime import datetime
 
 # Function to convert dataframes into an Excel file with multiple sheets
 @st.cache_data
 def convert_df_to_excel_with_sheets(unmatched_df, rms_df, current_alarms_df, site_access_df):
+    # Clean column names
+    unmatched_df = clean_column_names(unmatched_df)
+    rms_df = clean_column_names(rms_df)
+    current_alarms_df = clean_column_names(current_alarms_df)
+    site_access_df = clean_column_names(site_access_df)
+    
     # Filter unmatched data to show only the required columns
     filtered_unmatched_df = unmatched_df[['Site Alias', 'Zone', 'Cluster', 'Start Time', 'End Time']]
 
@@ -281,12 +309,12 @@ if site_access_file and rms_file and current_alarms_file:
 else:
     st.sidebar.write("Please upload all required files to enable data download.")
 
-
 # Telegram Notification Option
 if st.sidebar.button("💬 Send Notification"):
     # Ensure user has updated zone names before sending notifications
     if os.path.exists(user_file_path):
         user_df = pd.read_excel(user_file_path)
+        user_df = clean_column_names(user_df)
 
         # Ensure proper column names
         if "Zone" in user_df.columns and "Name" in user_df.columns:

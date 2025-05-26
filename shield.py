@@ -284,8 +284,8 @@ if site_access_file and rms_file and current_alarms_file:
             if "Zone" in user_df.columns and "Name" in user_df.columns:
                 zone_to_name = user_df.set_index("Zone")["Name"].to_dict()
                 zones = filtered_mismatches_df['Zone'].unique()
-                bot_token = "7543963915:AAGWMNVfD6BaCLuSyKAPCJgPGrdN5WyGLbo"
-                chat_id = "-4625672098"
+                bot_token = "NA"
+                chat_id = "NA"
 
                 for zone in zones:
                     zone_df = filtered_mismatches_df[filtered_mismatches_df['Zone'] == zone]
